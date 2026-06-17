@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>מחנה קיץ בעברית</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>מחנה קיץ בעברית</h1>
+    <p>קורס קיץ לדובר אנגלית ברמת עברית כיתה ה׳–ו׳</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>בחר שיעור</h2>
+      <div id="lessonList"></div>
+    </section>
+
+    <section id="quizArea" class="card hidden"></section>
+
+    <section class="card">
+      <h2>התקדמות</h2>
+      <div id="progressBox">עדיין אין ציונים.</div>
+      <button id="resetBtn" class="secondary">איפוס התקדמות</button>
+    </section>
+  </main>
+
+  <footer>
+    <p>הציונים נשמרים רק בדפדפן במחשב זה.</p>
+  </footer>
+
+  <script src="lessons.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
