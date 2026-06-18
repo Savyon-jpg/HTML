@@ -1,323 +1,36 @@
-const mainArea = document.getElementById("mainArea"),
-  lessonList = document.getElementById("lessonList"),
-  resetBtn = document.getElementById("resetBtn"),
-  homeBtn = document.getElementById("homeBtn"),
-  reviewBtn = document.getElementById("reviewBtn");
-
-const STUDENT_ID = "savyon";
-const firebaseConfig = {
-  apiKey: "AIzaSyDsJq3omGF9AWtKJonvObF9lhZa51_H83Q",
-  authDomain: "savyon-hebrew-course.firebaseapp.com",
-  projectId: "savyon-hebrew-course",
-  storageBucket: "savyon-hebrew-course.firebasestorage.app",
-  messagingSenderId: "396139246186",
-  appId: "1:396139246186:web:064302232a866a6d12d013"
-};
-
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-
-function normalize(s) {
-  return (s || "").trim().replace(/[״׳"]/g, "").replace(/\s+/g, " ");
-}
-
-function radioValue(n) {
-  const e = document.querySelector(`input[name="${n}"]:checked`);
-  return e ? Number(e.value) : null;
-}
-
-async function loadProgress() {
-  const doc = await db.collection("progress").doc(STUDENT_ID).get();
-  return doc.exists ? doc.data().lessons || {} : {};
-}
-
-async function saveProgressData(d) {
-  await db.collection("progress").doc(STUDENT_ID).set({ lessons: d }, { merge: true });
-}
-
-async function loadWrongWords() {
-  const doc = await db.collection("progress").doc(STUDENT_ID).get();
-  return doc.exists ? doc.data().wrongWords || [] : [];
-}
-
-async function saveWrongWords(w) {
-  await db.collection("progress").doc(STUDENT_ID).set(
-    { wrongWords: [...new Set(w)] },
-    { merge: true }
-  );
-}
-
-async function renderLessonList() {
-  const p = await loadProgress();
-  lessonList.innerHTML = "";
-  let u = "";
-
-  LESSONS.forEach(l => {
-    if (l.unit !== u) {
-      u = l.unit;
-      const h = document.createElement("h3");
-      h.textContent = u;
-      lessonList.appendChild(h);
-    }
-
-    const b = document.createElement("button");
-    b.className = "lesson-btn" + (p[l.id] ? " done" : "");
-    b.textContent = `${l.title}${p[l.id] ? " ✓" : ""}`;
-    b.onclick = () => renderLesson(l);
-    lessonList.appendChild(b);
-  });
-}
-
-async function renderHome() {
-  const p = await loadProgress();
-  const w = await loadWrongWords();
-  const done = Object.keys(p).length;
-  const s = Object.values(p);
-  const avg = s.length
-    ? Math.round(s.reduce((a, b) => a + b.percent, 0) / s.length)
-    : 0;
-
-  mainArea.innerHTML = `
-    <div class="card">
-      <h2>דף הבית</h2>
-      <p>קורס קיץ בעברית לדובר אנגלית. בכל שיעור יש אוצר מילים, קריאה, הבנת הנקרא, דקדוק ו-Cloze.</p>
-      <div class="grid">
-        <div class="stat"><strong>${done}</strong>שיעורים הושלמו</div>
-        <div class="stat"><strong>${avg}%</strong>ממוצע</div>
-        <div class="stat"><strong>${LESSONS.length}</strong>שיעורים זמינים</div>
-        <div class="stat"><strong>${w.length}</strong>מילים לחזרה</div>
-      </div>
-      <h3>ציונים אחרונים</h3>
-      ${
-        s.length
-          ? Object.entries(p).map(([id, item]) => {
-              const l = LESSONS.find(x => x.id === id);
-              return `<p><strong>${l?.title || id}</strong>: ${item.score}/${item.total} (${item.percent}%)</p>`;
-            }).join("")
-          : "<p>עדיין אין ציונים.</p>"
-      }
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>מחנה קיץ בעברית</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>מחנה קיץ בעברית</h1>
+      <p>שיעורים יומיים עם ניקוד אוטומטי</p>
     </div>
-  `;
+    <button id="homeBtn">דף הבית</button>
+  </header>
 
-  await renderLessonList();
-}
+  <main class="layout">
+    <aside class="sidebar">
+      <h2>שיעורים</h2>
+      <div id="lessonList"></div>
+      <hr>
+      <button id="reviewBtn" class="secondary">חזרה על מילים שטעיתי בהן</button>
+      <button id="importBtn" class="secondary">ייבוא התקדמות ישנה</button>
+      <button id="resetBtn" class="danger">איפוס התקדמות</button>
+    </aside>
 
-function renderLesson(l) {
-  mainArea.innerHTML = `
-    <div class="card">
-      <h2>${l.title}</h2>
-      <p class="small">${l.unit}</p>
+    <section id="mainArea" class="content"></section>
+  </main>
 
-      <div class="part">
-        <h3>חלק א׳ – אוצר מילים</h3>
-        <p>התאם בין המילה בעברית לפירוש באנגלית.</p>
-        ${l.vocabulary.map((pair, i) => `
-          <div class="question">
-            <strong>${i + 1}. ${pair[0]}</strong>
-            <select id="vocab_${i}">
-              <option value="">בחר פירוש</option>
-              ${l.vocabulary.map((p, j) => `<option value="${j}">${p[1]}</option>`).join("")}
-            </select>
-          </div>
-        `).join("")}
-      </div>
-
-      <div class="part">
-        <h3>חלק ב׳ – קריאה</h3>
-        <div class="reading">${l.reading}</div>
-      </div>
-
-      <div class="part">
-        <h3>חלק ג׳ – הבנת הנקרא</h3>
-        ${l.comprehension.map((q, i) =>
-          Array.isArray(q)
-            ? `
-              <div class="question">
-                <strong>${i + 1}. ${q[0]}</strong>
-                <div class="options">
-                  ${q[1].map((o, j) => `
-                    <label><input type="radio" name="comp_${i}" value="${j}"> ${o}</label>
-                  `).join("")}
-                </div>
-              </div>
-            `
-            : `
-              <div class="question">
-                <strong>${i + 1}. ${q.text}</strong>
-                <textarea id="open_${i}" rows="4" placeholder="כתוב תשובה קצרה"></textarea>
-                <p class="small">בדיקה בסיסית לפי מילות מפתח.</p>
-              </div>
-            `
-        ).join("")}
-      </div>
-
-      <div class="part">
-        <h3>חלק ד׳ – דקדוק</h3>
-        ${l.grammar.map((q, i) => `
-          <div class="question">
-            <strong>${i + 1}. ${q[0]}</strong>
-            <div class="options">
-              ${q[1].map((o, j) => `
-                <label><input type="radio" name="gram_${i}" value="${j}"> ${o}</label>
-              `).join("")}
-            </div>
-          </div>
-        `).join("")}
-      </div>
-
-      <div class="part">
-        <h3>חלק ה׳ – Cloze</h3>
-        <p><strong>בנק מילים:</strong> ${l.clozeBank.map(w => `<span class="badge">${w}</span>`).join(" ")}</p>
-        ${l.cloze.map((q, i) => `
-          <div class="question">
-            <strong>${i + 1}. ${q[0]}</strong>
-            <input type="text" id="cloze_${i}">
-          </div>
-        `).join("")}
-      </div>
-
-      <button onclick="gradeLesson('${l.id}')">בדוק שיעור</button>
-      <div id="resultBox"></div>
-    </div>
-  `;
-
-  scrollTo({ top: 0, behavior: "smooth" });
-}
-
-window.gradeLesson = async function(id) {
-  const l = LESSONS.find(x => x.id === id);
-  let score = 0, total = 0;
-  let parts = {
-    vocab: [0, 0],
-    reading: [0, 0],
-    grammar: [0, 0],
-    cloze: [0, 0]
-  };
-  let fb = [];
-  let wrong = await loadWrongWords();
-
-  l.vocabulary.forEach((pair, i) => {
-    total++;
-    parts.vocab[1]++;
-    const v = document.getElementById(`vocab_${i}`).value;
-
-    if (Number(v) === i) {
-      score++;
-      parts.vocab[0]++;
-    } else {
-      fb.push(`אוצר מילים: ${pair[0]} = ${pair[1]}`);
-      wrong.push(pair[0] + " = " + pair[1]);
-    }
-  });
-
-  l.comprehension.forEach((q, i) => {
-    total += 2;
-    parts.reading[1] += 2;
-
-    if (Array.isArray(q)) {
-      const v = radioValue(`comp_${i}`);
-      if (v === q[2]) {
-        score += 2;
-        parts.reading[0] += 2;
-      } else {
-        fb.push(`הבנת הנקרא ${i + 1}: התשובה הנכונה היא "${q[1][q[2]]}".`);
-      }
-    } else {
-      const ans = normalize(document.getElementById(`open_${i}`).value);
-      const hit = q.keywords.filter(k => ans.includes(k)).length;
-      const pts = hit ? 2 : ans.length > 10 ? 1 : 0;
-      score += pts;
-      parts.reading[0] += pts;
-      fb.push(`שאלה פתוחה ${i + 1}: תשובה טובה תכלול רעיון כמו: ${q.keywords.join(" / ")}.`);
-    }
-  });
-
-  l.grammar.forEach((q, i) => {
-    total++;
-    parts.grammar[1]++;
-    const v = radioValue(`gram_${i}`);
-
-    if (v === q[2]) {
-      score++;
-      parts.grammar[0]++;
-    } else {
-      fb.push(`דקדוק ${i + 1}: התשובה הנכונה היא "${q[1][q[2]]}".`);
-    }
-  });
-
-  l.cloze.forEach((q, i) => {
-    total++;
-    parts.cloze[1]++;
-    const v = normalize(document.getElementById(`cloze_${i}`).value);
-
-    if (v === q[1]) {
-      score++;
-      parts.cloze[0]++;
-    } else {
-      fb.push(`Cloze ${i + 1}: התשובה הנכונה היא "${q[1]}".`);
-    }
-  });
-
-  await saveWrongWords(wrong);
-
-  const percent = Math.round(score / total * 100);
-  const p = await loadProgress();
-
-  p[l.id] = {
-    score,
-    total,
-    percent,
-    parts,
-    date: new Date().toLocaleDateString("he-IL")
-  };
-
-  await saveProgressData(p);
-
-  document.getElementById("resultBox").innerHTML = `
-    <div class="scoreBox">
-      <h3>ציון: ${score}/${total} (${percent}%)</h3>
-      <p>
-        אוצר מילים: ${parts.vocab[0]}/${parts.vocab[1]} |
-        הבנת הנקרא: ${parts.reading[0]}/${parts.reading[1]} |
-        דקדוק: ${parts.grammar[0]}/${parts.grammar[1]} |
-        Cloze: ${parts.cloze[0]}/${parts.cloze[1]}
-      </p>
-    </div>
-    <h3>משוב</h3>
-    ${
-      fb.length
-        ? `<ul>${fb.map(x => `<li>${x}</li>`).join("")}</ul>`
-        : "<p>מעולה! הכול נכון.</p>"
-    }
-  `;
-
-  await renderLessonList();
-};
-
-async function renderReview() {
-  const w = await loadWrongWords();
-
-  mainArea.innerHTML = `
-    <div class="card">
-      <h2>חזרה על מילים שטעיתי בהן</h2>
-      ${
-        w.length
-          ? w.map(x => `<span class="badge">${x}</span>`).join(" ")
-          : "<p>אין עדיין מילים לחזרה.</p>"
-      }
-      <p class="small">בגרסה הבאה אפשר להפוך את הרשימה הזאת לבוחן חזרה אוטומטי.</p>
-    </div>
-  `;
-}
-
-resetBtn.onclick = async () => {
-  if (confirm("לאפס את כל ההתקדמות?")) {
-    await db.collection("progress").doc(STUDENT_ID).delete();
-    await renderHome();
-  }
-};
-
-homeBtn.onclick = renderHome;
-reviewBtn.onclick = renderReview;
-
-renderHome();
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="lessons.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
