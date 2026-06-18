@@ -7,17 +7,10 @@ const importBtn = document.getElementById("importBtn");
 
 const STUDENT_ID = "savyon";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDsJq3omGF9AWtKJonvObF9lhZa51_H83Q",
-  authDomain: "savyon-hebrew-course.firebaseapp.com",
-  projectId: "savyon-hebrew-course",
-  storageBucket: "savyon-hebrew-course.firebasestorage.app",
-  messagingSenderId: "396139246186",
-  appId: "1:396139246186:web:064302232a866a6d12d013"
-};
+const SUPABASE_URL = "https://gonfodbllgdzuuvnkdko.supabase.co";
+const SUPABASE_KEY = "sb_publishable_PY57jZeJiAIaJSHDPrbCeg_r1eC4FC8";
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const OLD_PROGRESS_KEY = "hebrewCourseV2Progress";
 const OLD_WRONG_KEY = "hebrewCourseV2WrongWords";
@@ -35,28 +28,38 @@ function showError(err) {
   mainArea.innerHTML = `
     <div class="card">
       <h2>שגיאה</h2>
-      <p>יש בעיה בחיבור ל-Firebase.</p>
-      <p class="small">${err.message}</p>
+      <p>יש בעיה בטעינה או בשמירת ההתקדמות.</p>
+      <p class="small">${err.message || err}</p>
     </div>
   `;
 }
 
 async function getData() {
-  const doc = await db.collection("progress").doc(STUDENT_ID).get();
-  if (!doc.exists) return { lessons: {}, wrongWords: [] };
-  return {
-    lessons: doc.data().lessons || {},
-    wrongWords: doc.data().wrongWords || []
-  };
+  const { data, error } = await db
+    .from("progress")
+    .select("data")
+    .eq("student_id", STUDENT_ID)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return data?.data || { lessons: {}, wrongWords: [] };
 }
 
 async function saveData(data) {
-  await db.collection("progress").doc(STUDENT_ID).set(data, { merge: true });
+  const { error } = await db
+    .from("progress")
+    .upsert({
+      student_id: STUDENT_ID,
+      data
+    });
+
+  if (error) throw error;
 }
 
 async function renderLessonList() {
   const data = await getData();
-  const p = data.lessons;
+  const p = data.lessons || {};
 
   lessonList.innerHTML = "";
   let unit = "";
@@ -80,8 +83,8 @@ async function renderLessonList() {
 async function renderHome() {
   try {
     const data = await getData();
-    const p = data.lessons;
-    const w = data.wrongWords;
+    const p = data.lessons || {};
+    const w = data.wrongWords || [];
 
     const done = Object.keys(p).length;
     const scores = Object.values(p);
@@ -202,140 +205,149 @@ function renderLesson(l) {
 }
 
 window.gradeLesson = async function(id) {
-  const l = LESSONS.find(x => x.id === id);
-  let score = 0;
-  let total = 0;
+  try {
+    const l = LESSONS.find(x => x.id === id);
+    let score = 0;
+    let total = 0;
 
-  const parts = {
-    vocab: [0, 0],
-    reading: [0, 0],
-    grammar: [0, 0],
-    cloze: [0, 0]
-  };
+    const parts = {
+      vocab: [0, 0],
+      reading: [0, 0],
+      grammar: [0, 0],
+      cloze: [0, 0]
+    };
 
-  const fb = [];
-  const data = await getData();
-  const wrong = data.wrongWords || [];
+    const fb = [];
+    const data = await getData();
+    const wrong = data.wrongWords || [];
 
-  l.vocabulary.forEach((pair, i) => {
-    total++;
-    parts.vocab[1]++;
-    const v = document.getElementById(`vocab_${i}`).value;
+    l.vocabulary.forEach((pair, i) => {
+      total++;
+      parts.vocab[1]++;
+      const v = document.getElementById(`vocab_${i}`).value;
 
-    if (Number(v) === i) {
-      score++;
-      parts.vocab[0]++;
-    } else {
-      fb.push(`אוצר מילים: ${pair[0]} = ${pair[1]}`);
-      wrong.push(pair[0] + " = " + pair[1]);
-    }
-  });
+      if (Number(v) === i) {
+        score++;
+        parts.vocab[0]++;
+      } else {
+        fb.push(`אוצר מילים: ${pair[0]} = ${pair[1]}`);
+        wrong.push(pair[0] + " = " + pair[1]);
+      }
+    });
 
-  l.comprehension.forEach((q, i) => {
-    total += 2;
-    parts.reading[1] += 2;
+    l.comprehension.forEach((q, i) => {
+      total += 2;
+      parts.reading[1] += 2;
 
-    if (Array.isArray(q)) {
-      const v = radioValue(`comp_${i}`);
+      if (Array.isArray(q)) {
+        const v = radioValue(`comp_${i}`);
+
+        if (v === q[2]) {
+          score += 2;
+          parts.reading[0] += 2;
+        } else {
+          fb.push(`הבנת הנקרא ${i + 1}: התשובה הנכונה היא "${q[1][q[2]]}".`);
+        }
+      } else {
+        const ans = normalize(document.getElementById(`open_${i}`).value);
+        const hit = q.keywords.filter(k => ans.includes(k)).length;
+        const pts = hit ? 2 : ans.length > 10 ? 1 : 0;
+
+        score += pts;
+        parts.reading[0] += pts;
+        fb.push(`שאלה פתוחה ${i + 1}: תשובה טובה תכלול רעיון כמו: ${q.keywords.join(" / ")}.`);
+      }
+    });
+
+    l.grammar.forEach((q, i) => {
+      total++;
+      parts.grammar[1]++;
+      const v = radioValue(`gram_${i}`);
 
       if (v === q[2]) {
-        score += 2;
-        parts.reading[0] += 2;
+        score++;
+        parts.grammar[0]++;
       } else {
-        fb.push(`הבנת הנקרא ${i + 1}: התשובה הנכונה היא "${q[1][q[2]]}".`);
+        fb.push(`דקדוק ${i + 1}: התשובה הנכונה היא "${q[1][q[2]]}".`);
       }
-    } else {
-      const ans = normalize(document.getElementById(`open_${i}`).value);
-      const hit = q.keywords.filter(k => ans.includes(k)).length;
-      const pts = hit ? 2 : ans.length > 10 ? 1 : 0;
+    });
 
-      score += pts;
-      parts.reading[0] += pts;
-      fb.push(`שאלה פתוחה ${i + 1}: תשובה טובה תכלול רעיון כמו: ${q.keywords.join(" / ")}.`);
-    }
-  });
+    l.cloze.forEach((q, i) => {
+      total++;
+      parts.cloze[1]++;
+      const v = normalize(document.getElementById(`cloze_${i}`).value);
 
-  l.grammar.forEach((q, i) => {
-    total++;
-    parts.grammar[1]++;
-    const v = radioValue(`gram_${i}`);
+      if (v === q[1]) {
+        score++;
+        parts.cloze[0]++;
+      } else {
+        fb.push(`Cloze ${i + 1}: התשובה הנכונה היא "${q[1]}".`);
+      }
+    });
 
-    if (v === q[2]) {
-      score++;
-      parts.grammar[0]++;
-    } else {
-      fb.push(`דקדוק ${i + 1}: התשובה הנכונה היא "${q[1][q[2]]}".`);
-    }
-  });
+    const percent = Math.round((score / total) * 100);
 
-  l.cloze.forEach((q, i) => {
-    total++;
-    parts.cloze[1]++;
-    const v = normalize(document.getElementById(`cloze_${i}`).value);
+    data.lessons = data.lessons || {};
+    data.lessons[id] = {
+      score,
+      total,
+      percent,
+      parts,
+      date: new Date().toLocaleDateString("he-IL")
+    };
 
-    if (v === q[1]) {
-      score++;
-      parts.cloze[0]++;
-    } else {
-      fb.push(`Cloze ${i + 1}: התשובה הנכונה היא "${q[1]}".`);
-    }
-  });
+    data.wrongWords = [...new Set(wrong)];
 
-  const percent = Math.round((score / total) * 100);
+    await saveData(data);
 
-  data.lessons[id] = {
-    score,
-    total,
-    percent,
-    parts,
-    date: new Date().toLocaleDateString("he-IL")
-  };
+    document.getElementById("resultBox").innerHTML = `
+      <div class="scoreBox">
+        <h3>ציון: ${score}/${total} (${percent}%)</h3>
+        <p>
+          אוצר מילים: ${parts.vocab[0]}/${parts.vocab[1]} |
+          הבנת הנקרא: ${parts.reading[0]}/${parts.reading[1]} |
+          דקדוק: ${parts.grammar[0]}/${parts.grammar[1]} |
+          Cloze: ${parts.cloze[0]}/${parts.cloze[1]}
+        </p>
+      </div>
 
-  data.wrongWords = [...new Set(wrong)];
+      <h3>משוב</h3>
+      ${
+        fb.length
+          ? `<ul>${fb.map(x => `<li>${x}</li>`).join("")}</ul>`
+          : "<p>מעולה! הכול נכון.</p>"
+      }
+    `;
 
-  await saveData(data);
-
-  document.getElementById("resultBox").innerHTML = `
-    <div class="scoreBox">
-      <h3>ציון: ${score}/${total} (${percent}%)</h3>
-      <p>
-        אוצר מילים: ${parts.vocab[0]}/${parts.vocab[1]} |
-        הבנת הנקרא: ${parts.reading[0]}/${parts.reading[1]} |
-        דקדוק: ${parts.grammar[0]}/${parts.grammar[1]} |
-        Cloze: ${parts.cloze[0]}/${parts.cloze[1]}
-      </p>
-    </div>
-
-    <h3>משוב</h3>
-    ${
-      fb.length
-        ? `<ul>${fb.map(x => `<li>${x}</li>`).join("")}</ul>`
-        : "<p>מעולה! הכול נכון.</p>"
-    }
-  `;
-
-  await renderLessonList();
+    await renderLessonList();
+  } catch (err) {
+    showError(err);
+  }
 };
 
 async function renderReview() {
-  const data = await getData();
-  const w = data.wrongWords || [];
+  try {
+    const data = await getData();
+    const w = data.wrongWords || [];
 
-  mainArea.innerHTML = `
-    <div class="card">
-      <h2>חזרה על מילים שטעיתי בהן</h2>
-      ${
-        w.length
-          ? w.map(x => `<span class="badge">${x}</span>`).join(" ")
-          : "<p>אין עדיין מילים לחזרה.</p>"
-      }
-    </div>
-  `;
+    mainArea.innerHTML = `
+      <div class="card">
+        <h2>חזרה על מילים שטעיתי בהן</h2>
+        ${
+          w.length
+            ? w.map(x => `<span class="badge">${x}</span>`).join(" ")
+            : "<p>אין עדיין מילים לחזרה.</p>"
+        }
+      </div>
+    `;
+  } catch (err) {
+    showError(err);
+  }
 }
 
 resetBtn.onclick = async () => {
   if (confirm("לאפס את כל ההתקדמות?")) {
-    await db.collection("progress").doc(STUDENT_ID).delete();
+    await saveData({ lessons: {}, wrongWords: [] });
     await renderHome();
   }
 };
@@ -349,7 +361,7 @@ importBtn.onclick = async () => {
     wrongWords: oldWrongWords
   });
 
-  alert("ההתקדמות הישנה הועתקה ל-Firebase.");
+  alert("ההתקדמות הישנה הועתקה.");
   await renderHome();
 };
 
