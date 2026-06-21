@@ -1,4 +1,4 @@
-const lessons = [
+const LESSONS = [
   {
     id: "nobel",
     unit: "הבנת הנקרא",
