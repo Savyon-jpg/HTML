@@ -1,34 +1,35 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>מחנה קיץ בעברית</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <h1>מחנה קיץ בעברית</h1>
-      <p>שיעורים יומיים עם ניקוד אוטומטי</p>
-    </div>
-    <button id="homeBtn">דף הבית</button>
+    <h1>מחנה קיץ בעברית</h1>
+    <p>שיעורים יומיים עם ניקוד אוטומטי</p>
   </header>
 
   <main class="layout">
     <aside class="sidebar">
+      <button id="homeBtn" class="main-btn">דף הבית</button>
+      <button id="reviewBtn" class="main-btn">חזרה על מילים שטעיתי בהן</button>
+      <button id="exportBtn" class="main-btn safe">ייצוא גיבוי</button>
+      <button id="importFileBtn" class="main-btn safe">ייבוא מגיבוי</button>
+      <input id="importFile" type="file" accept="application/json" hidden />
+      <button id="importOldBtn" class="main-btn warning">ייבוא התקדמות ישנה מהמחשב</button>
+      <button id="resetBtn" class="main-btn danger">איפוס התקדמות</button>
+
       <h2>שיעורים</h2>
       <div id="lessonList"></div>
-      <hr>
-      <button id="reviewBtn" class="secondary">חזרה על מילים שטעיתי בהן</button>
-      <button id="importBtn" class="secondary">ייבוא התקדמות ישנה</button>
-      <button id="resetBtn" class="danger">איפוס התקדמות</button>
     </aside>
 
     <section id="mainArea" class="content"></section>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="lessons.js"></script>
   <script src="app.js"></script>
 </body>

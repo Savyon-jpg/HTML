@@ -1,36 +1,76 @@
 const mainArea = document.getElementById("mainArea");
 const lessonList = document.getElementById("lessonList");
-const resetBtn = document.getElementById("resetBtn");
+
 const homeBtn = document.getElementById("homeBtn");
 const reviewBtn = document.getElementById("reviewBtn");
-const importBtn = document.getElementById("importBtn");
+const resetBtn = document.getElementById("resetBtn");
+const exportBtn = document.getElementById("exportBtn");
+const importFileBtn = document.getElementById("importFileBtn");
+const importFile = document.getElementById("importFile");
+const importOldBtn = document.getElementById("importOldBtn");
 
 const STUDENT_ID = "savyon";
-
 const SUPABASE_URL = "https://gonfodbllgdzuuvnkdko.supabase.co";
 const SUPABASE_KEY = "sb_publishable_PY57jZeJiAIaJSHDPrbCeg_r1eC4FC8";
-
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const OLD_PROGRESS_KEY = "hebrewCourseV2Progress";
 const OLD_WRONG_KEY = "hebrewCourseV2WrongWords";
 
+function emptyData() {
+  return { lessons: {}, wrongWords: [], backups: [] };
+}
+
+function normalizeData(data) {
+  return {
+    lessons: data?.lessons && typeof data.lessons === "object" ? data.lessons : {},
+    wrongWords: Array.isArray(data?.wrongWords) ? data.wrongWords : [],
+    backups: Array.isArray(data?.backups) ? data.backups : []
+  };
+}
+
+function mergeData(oldData, newData) {
+  const a = normalizeData(oldData);
+  const b = normalizeData(newData);
+
+  const lessons = { ...a.lessons };
+
+  for (const [id, incoming] of Object.entries(b.lessons)) {
+    const existing = lessons[id];
+
+    if (!existing) {
+      lessons[id] = incoming;
+      continue;
+    }
+
+    const existingPercent = Number(existing.percent || 0);
+    const incomingPercent = Number(incoming.percent || 0);
+
+    // שומר את הציון הגבוה יותר, כדי שייבוא ישן לא יוריד התקדמות קיימת.
+    lessons[id] = incomingPercent >= existingPercent ? incoming : existing;
+  }
+
+  return {
+    lessons,
+    wrongWords: [...new Set([...a.wrongWords, ...b.wrongWords])],
+    backups: [...(a.backups || []), ...(b.backups || [])].slice(-10)
+  };
+}
+
 function normalize(s) {
   return (s || "").trim().replace(/[״׳"]/g, "").replace(/\s+/g, " ");
 }
 
-function radioValue(n) {
-  const e = document.querySelector(`input[name="${n}"]:checked`);
+function radioValue(name) {
+  const e = document.querySelector(`input[name="${name}"]:checked`);
   return e ? Number(e.value) : null;
 }
 
 function showError(err) {
   mainArea.innerHTML = `
-    <div class="card">
-      <h2>שגיאה</h2>
-      <p>יש בעיה בטעינה או בשמירת ההתקדמות.</p>
-      <p class="small">${err.message || err}</p>
-    </div>
+    <h2>שגיאה</h2>
+    <p>יש בעיה בטעינה או בשמירת ההתקדמות.</p>
+    <pre>${err?.message || err}</pre>
   `;
 }
 
@@ -42,17 +82,23 @@ async function getData() {
     .maybeSingle();
 
   if (error) throw error;
-
-  return data?.data || { lessons: {}, wrongWords: [] };
+  return normalizeData(data?.data || emptyData());
 }
 
-async function saveData(data) {
+async function saveData(nextData) {
+  const current = await getData().catch(() => emptyData());
+  const backup = {
+    date: new Date().toISOString(),
+    lessons: current.lessons,
+    wrongWords: current.wrongWords
+  };
+
+  const finalData = normalizeData(nextData);
+  finalData.backups = [...(current.backups || []), backup].slice(-10);
+
   const { error } = await db
     .from("progress")
-    .upsert({
-      student_id: STUDENT_ID,
-      data
-    });
+    .upsert({ student_id: STUDENT_ID, data: finalData });
 
   if (error) throw error;
 }
@@ -60,10 +106,9 @@ async function saveData(data) {
 async function renderLessonList() {
   const data = await getData();
   const p = data.lessons || {};
-
   lessonList.innerHTML = "";
-  let unit = "";
 
+  let unit = "";
   LESSONS.forEach(l => {
     if (l.unit !== unit) {
       unit = l.unit;
@@ -85,37 +130,33 @@ async function renderHome() {
     const data = await getData();
     const p = data.lessons || {};
     const w = data.wrongWords || [];
-
-    const done = Object.keys(p).length;
     const scores = Object.values(p);
+    const done = Object.keys(p).length;
     const avg = scores.length
-      ? Math.round(scores.reduce((a, b) => a + b.percent, 0) / scores.length)
+      ? Math.round(scores.reduce((a, b) => a + Number(b.percent || 0), 0) / scores.length)
       : 0;
 
     mainArea.innerHTML = `
-      <div class="card">
-        <h2>דף הבית</h2>
-        <p>קורס קיץ בעברית לדובר אנגלית. בכל שיעור יש אוצר מילים, קריאה, הבנת הנקרא, דקדוק ו-Cloze.</p>
+      <h2>דף הבית</h2>
+      <p>קורס קיץ בעברית לדובר אנגלית.</p>
 
-        <div class="grid">
-          <div class="stat"><strong>${done}</strong>שיעורים הושלמו</div>
-          <div class="stat"><strong>${avg}%</strong>ממוצע</div>
-          <div class="stat"><strong>${LESSONS.length}</strong>שיעורים זמינים</div>
-          <div class="stat"><strong>${w.length}</strong>מילים לחזרה</div>
-        </div>
-
-        <h3>ציונים אחרונים</h3>
-        ${
-          scores.length
-            ? Object.entries(p).map(([id, item]) => {
-                const l = LESSONS.find(x => x.id === id);
-                return `<p><strong>${l?.title || id}</strong>: ${item.score}/${item.total} (${item.percent}%)</p>`;
-              }).join("")
-            : "<p>עדיין אין ציונים.</p>"
-        }
+      <div class="cards">
+        <div class="card"><strong>${done}</strong><span>שיעורים הושלמו</span></div>
+        <div class="card"><strong>${avg}%</strong><span>ממוצע</span></div>
+        <div class="card"><strong>${LESSONS.length}</strong><span>שיעורים זמינים</span></div>
+        <div class="card"><strong>${w.length}</strong><span>מילים לחזרה</span></div>
       </div>
-    `;
 
+      <h3>ציונים אחרונים</h3>
+      ${
+        scores.length
+          ? `<ul>${Object.entries(p).map(([id, item]) => {
+              const l = LESSONS.find(x => x.id === id);
+              return `<li>${l?.title || id}: ${item.score}/${item.total} (${item.percent}%)</li>`;
+            }).join("")}</ul>`
+          : "<p>עדיין אין ציונים.</p>"
+      }
+    `;
     await renderLessonList();
   } catch (err) {
     showError(err);
@@ -124,81 +165,59 @@ async function renderHome() {
 
 function renderLesson(l) {
   mainArea.innerHTML = `
-    <div class="card">
-      <h2>${l.title}</h2>
-      <p class="small">${l.unit}</p>
+    <h2>${l.title}</h2>
+    <p class="unit">${l.unit}</p>
 
-      <div class="part">
-        <h3>חלק א׳ – אוצר מילים</h3>
-        <p>התאם בין המילה בעברית לפירוש באנגלית.</p>
-        ${l.vocabulary.map((pair, i) => `
-          <div class="question">
-            <strong>${i + 1}. ${pair[0]}</strong>
-            <select id="vocab_${i}">
-              <option value="">בחר פירוש</option>
-              ${l.vocabulary.map((p, j) => `<option value="${j}">${p[1]}</option>`).join("")}
-            </select>
-          </div>
+    <h3>חלק א׳ – אוצר מילים</h3>
+    ${l.vocabulary.map((pair, i) => `
+      <label class="question">
+        ${i + 1}. ${pair[0]}
+        <select id="vocab_${i}">
+          <option value="">בחר פירוש</option>
+          ${l.vocabulary.map((p, j) => `<option value="${j}">${p[1]}</option>`).join("")}
+        </select>
+      </label>
+    `).join("")}
+
+    <h3>חלק ב׳ – קריאה</h3>
+    <div class="reading">${l.reading}</div>
+
+    <h3>חלק ג׳ – הבנת הנקרא</h3>
+    ${l.comprehension.map((q, i) => Array.isArray(q) ? `
+      <div class="question">
+        <p>${i + 1}. ${q[0]}</p>
+        ${q[1].map((o, j) => `
+          <label><input type="radio" name="comp_${i}" value="${j}"> ${o}</label>
         `).join("")}
       </div>
+    ` : `
+      <label class="question">
+        ${i + 1}. ${q.text}
+        <textarea id="open_${i}" rows="3"></textarea>
+      </label>
+    `).join("")}
 
-      <div class="part">
-        <h3>חלק ב׳ – קריאה</h3>
-        <div class="reading">${l.reading}</div>
-      </div>
-
-      <div class="part">
-        <h3>חלק ג׳ – הבנת הנקרא</h3>
-        ${l.comprehension.map((q, i) =>
-          Array.isArray(q)
-            ? `
-              <div class="question">
-                <strong>${i + 1}. ${q[0]}</strong>
-                <div class="options">
-                  ${q[1].map((o, j) => `
-                    <label><input type="radio" name="comp_${i}" value="${j}"> ${o}</label>
-                  `).join("")}
-                </div>
-              </div>
-            `
-            : `
-              <div class="question">
-                <strong>${i + 1}. ${q.text}</strong>
-                <textarea id="open_${i}" rows="4" placeholder="כתוב תשובה קצרה"></textarea>
-                <p class="small">בדיקה בסיסית לפי מילות מפתח.</p>
-              </div>
-            `
-        ).join("")}
-      </div>
-
-      <div class="part">
-        <h3>חלק ד׳ – דקדוק</h3>
-        ${l.grammar.map((q, i) => `
-          <div class="question">
-            <strong>${i + 1}. ${q[0]}</strong>
-            <div class="options">
-              ${q[1].map((o, j) => `
-                <label><input type="radio" name="gram_${i}" value="${j}"> ${o}</label>
-              `).join("")}
-            </div>
-          </div>
+    <h3>חלק ד׳ – דקדוק</h3>
+    ${l.grammar.map((q, i) => `
+      <div class="question">
+        <p>${i + 1}. ${q[0]}</p>
+        ${q[1].map((o, j) => `
+          <label><input type="radio" name="gram_${i}" value="${j}"> ${o}</label>
         `).join("")}
       </div>
+    `).join("")}
 
-      <div class="part">
-        <h3>חלק ה׳ – Cloze</h3>
-        <p><strong>בנק מילים:</strong> ${l.clozeBank.map(w => `<span class="badge">${w}</span>`).join(" ")}</p>
-        ${l.cloze.map((q, i) => `
-          <div class="question">
-            <strong>${i + 1}. ${q[0]}</strong>
-            <input type="text" id="cloze_${i}">
-          </div>
-        `).join("")}
-      </div>
+    <h3>חלק ה׳ – Cloze</h3>
+    <p><strong>בנק מילים:</strong> ${l.clozeBank.join(" | ")}</p>
+    ${l.cloze.map((q, i) => `
+      <label class="question">
+        ${i + 1}. ${q[0]}
+        <input id="cloze_${i}" type="text">
+      </label>
+    `).join("")}
 
-      <button onclick="gradeLesson('${l.id}')">בדוק שיעור</button>
-      <div id="resultBox"></div>
-    </div>
+    <button class="submit-btn" onclick="gradeLesson('${l.id}')">בדוק שיעור</button>
+    <div id="resultBox"></div>
   `;
 
   scrollTo({ top: 0, behavior: "smooth" });
@@ -209,15 +228,9 @@ window.gradeLesson = async function(id) {
     const l = LESSONS.find(x => x.id === id);
     let score = 0;
     let total = 0;
-
-    const parts = {
-      vocab: [0, 0],
-      reading: [0, 0],
-      grammar: [0, 0],
-      cloze: [0, 0]
-    };
-
+    const parts = { vocab: [0, 0], reading: [0, 0], grammar: [0, 0], cloze: [0, 0] };
     const fb = [];
+
     const data = await getData();
     const wrong = data.wrongWords || [];
 
@@ -225,7 +238,6 @@ window.gradeLesson = async function(id) {
       total++;
       parts.vocab[1]++;
       const v = document.getElementById(`vocab_${i}`).value;
-
       if (Number(v) === i) {
         score++;
         parts.vocab[0]++;
@@ -241,7 +253,6 @@ window.gradeLesson = async function(id) {
 
       if (Array.isArray(q)) {
         const v = radioValue(`comp_${i}`);
-
         if (v === q[2]) {
           score += 2;
           parts.reading[0] += 2;
@@ -249,13 +260,12 @@ window.gradeLesson = async function(id) {
           fb.push(`הבנת הנקרא ${i + 1}: התשובה הנכונה היא "${q[1][q[2]]}".`);
         }
       } else {
-        const ans = normalize(document.getElementById(`open_${i}`).value);
-        const hit = q.keywords.filter(k => ans.includes(k)).length;
+        const ans = normalize(document.getElementById(`open_${i}`)?.value || "");
+        const hit = (q.keywords || []).filter(k => ans.includes(k)).length;
         const pts = hit ? 2 : ans.length > 10 ? 1 : 0;
-
         score += pts;
         parts.reading[0] += pts;
-        fb.push(`שאלה פתוחה ${i + 1}: תשובה טובה תכלול רעיון כמו: ${q.keywords.join(" / ")}.`);
+        fb.push(`שאלה פתוחה ${i + 1}: תשובה טובה תכלול רעיון כמו: ${(q.keywords || []).join(" / ")}.`);
       }
     });
 
@@ -263,7 +273,6 @@ window.gradeLesson = async function(id) {
       total++;
       parts.grammar[1]++;
       const v = radioValue(`gram_${i}`);
-
       if (v === q[2]) {
         score++;
         parts.grammar[0]++;
@@ -276,7 +285,6 @@ window.gradeLesson = async function(id) {
       total++;
       parts.cloze[1]++;
       const v = normalize(document.getElementById(`cloze_${i}`).value);
-
       if (v === q[1]) {
         score++;
         parts.cloze[0]++;
@@ -287,7 +295,6 @@ window.gradeLesson = async function(id) {
 
     const percent = Math.round((score / total) * 100);
 
-    data.lessons = data.lessons || {};
     data.lessons[id] = {
       score,
       total,
@@ -295,28 +302,20 @@ window.gradeLesson = async function(id) {
       parts,
       date: new Date().toLocaleDateString("he-IL")
     };
-
     data.wrongWords = [...new Set(wrong)];
 
     await saveData(data);
 
     document.getElementById("resultBox").innerHTML = `
-      <div class="scoreBox">
-        <h3>ציון: ${score}/${total} (${percent}%)</h3>
-        <p>
-          אוצר מילים: ${parts.vocab[0]}/${parts.vocab[1]} |
-          הבנת הנקרא: ${parts.reading[0]}/${parts.reading[1]} |
-          דקדוק: ${parts.grammar[0]}/${parts.grammar[1]} |
-          Cloze: ${parts.cloze[0]}/${parts.cloze[1]}
-        </p>
-      </div>
-
+      <h3>ציון: ${score}/${total} (${percent}%)</h3>
+      <p>
+        אוצר מילים: ${parts.vocab[0]}/${parts.vocab[1]} |
+        הבנת הנקרא: ${parts.reading[0]}/${parts.reading[1]} |
+        דקדוק: ${parts.grammar[0]}/${parts.grammar[1]} |
+        Cloze: ${parts.cloze[0]}/${parts.cloze[1]}
+      </p>
       <h3>משוב</h3>
-      ${
-        fb.length
-          ? `<ul>${fb.map(x => `<li>${x}</li>`).join("")}</ul>`
-          : "<p>מעולה! הכול נכון.</p>"
-      }
+      ${fb.length ? `<ul>${fb.map(x => `<li>${x}</li>`).join("")}</ul>` : "<p>מעולה! הכול נכון.</p>"}
     `;
 
     await renderLessonList();
@@ -329,39 +328,78 @@ async function renderReview() {
   try {
     const data = await getData();
     const w = data.wrongWords || [];
-
     mainArea.innerHTML = `
-      <div class="card">
-        <h2>חזרה על מילים שטעיתי בהן</h2>
-        ${
-          w.length
-            ? w.map(x => `<span class="badge">${x}</span>`).join(" ")
-            : "<p>אין עדיין מילים לחזרה.</p>"
-        }
-      </div>
+      <h2>חזרה על מילים שטעיתי בהן</h2>
+      ${w.length ? `<ul>${w.map(x => `<li>${x}</li>`).join("")}</ul>` : "<p>אין עדיין מילים לחזרה.</p>"}
     `;
   } catch (err) {
     showError(err);
   }
 }
 
-resetBtn.onclick = async () => {
-  if (confirm("לאפס את כל ההתקדמות?")) {
-    await saveData({ lessons: {}, wrongWords: [] });
+exportBtn.onclick = async () => {
+  const data = await getData();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `savyon-progress-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+
+  URL.revokeObjectURL(url);
+};
+
+importFileBtn.onclick = () => importFile.click();
+
+importFile.onchange = async () => {
+  try {
+    const file = importFile.files[0];
+    if (!file) return;
+
+    const text = await file.text();
+    const imported = normalizeData(JSON.parse(text));
+    const current = await getData();
+    const merged = mergeData(current, imported);
+
+    await saveData(merged);
+    alert("הגיבוי מוזג עם ההתקדמות הקיימת. שום ציון קיים לא נמחק.");
     await renderHome();
+  } catch (err) {
+    showError(err);
   }
 };
 
-importBtn.onclick = async () => {
-  const oldProgress = JSON.parse(localStorage.getItem(OLD_PROGRESS_KEY) || "{}");
-  const oldWrongWords = JSON.parse(localStorage.getItem(OLD_WRONG_KEY) || "[]");
+importOldBtn.onclick = async () => {
+  try {
+    const oldProgress = JSON.parse(localStorage.getItem(OLD_PROGRESS_KEY) || "{}");
+    const oldWrongWords = JSON.parse(localStorage.getItem(OLD_WRONG_KEY) || "[]");
 
-  await saveData({
-    lessons: oldProgress,
-    wrongWords: oldWrongWords
-  });
+    if (!Object.keys(oldProgress).length && !oldWrongWords.length) {
+      alert("לא נמצאה התקדמות ישנה במחשב הזה.");
+      return;
+    }
 
-  alert("ההתקדמות הישנה הועתקה.");
+    const current = await getData();
+    const oldData = { lessons: oldProgress, wrongWords: oldWrongWords };
+    const merged = mergeData(current, oldData);
+
+    await saveData(merged);
+    alert("ההתקדמות הישנה מוזגה בלי לדרוס את ההתקדמות בענן.");
+    await renderHome();
+  } catch (err) {
+    showError(err);
+  }
+};
+
+resetBtn.onclick = async () => {
+  const first = confirm("זה יאפס את כל ההתקדמות בענן. להמשיך?");
+  if (!first) return;
+
+  const second = confirm("אישור נוסף: האם אתה בטוח לגמרי?");
+  if (!second) return;
+
+  await saveData(emptyData());
   await renderHome();
 };
 
