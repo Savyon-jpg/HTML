@@ -1,29 +1,103 @@
 const mainArea = document.getElementById("mainArea");
 const lessonList = document.getElementById("lessonList");
 
+const SUPABASE_URL = "https://gonfodbllgdzuuvnkdko.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_PY57jZeJiAIaJSHDPrbCeg_r1eC4FC8";
+const STUDENT_ID = "savyon";
+const PROGRESS_TABLE = "progress";
+
+let supabaseClient = null;
+let progressCache = [];
+
+function initSupabase() {
+  if (window.supabase && typeof window.supabase.createClient === "function") {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    console.log("Supabase connected");
+  } else {
+    console.error("Supabase library not loaded. Check index.html");
+  }
+}
+
+async function loadProgress() {
+  if (!supabaseClient) return;
+
+  const { data, error } = await supabaseClient
+    .from(PROGRESS_TABLE)
+    .select("*")
+    .eq("student_id", STUDENT_ID)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    console.error("Error loading progress:", error);
+    progressCache = [];
+    return;
+  }
+
+  progressCache = data || [];
+}
+
+function getLessonProgress(lessonId) {
+  return progressCache.find(row => row.lesson_id === lessonId);
+}
+
 function renderLessonList() {
   lessonList.innerHTML = "";
-
   LESSONS.forEach((lesson, index) => {
     const btn = document.createElement("button");
+    const saved = getLessonProgress(lesson.id);
+
     btn.className = "lesson-btn";
-    btn.textContent = `${index + 1}. ${lesson.title}`;
+    btn.textContent = `${index + 1}. ${lesson.title}${saved ? " ✓" : ""}`;
     btn.onclick = () => renderLesson(lesson);
+
     lessonList.appendChild(btn);
   });
 }
 
 function renderHome() {
+  const completed = progressCache.length;
+  const average = completed
+    ? Math.round(progressCache.reduce((sum, row) => sum + Number(row.percent || 0), 0) / completed)
+    : 0;
+
+  const recent = progressCache.slice(0, 5).map(row => `
+    <tr>
+      <td>${row.lesson_title || row.lesson_id}</td>
+      <td>${row.score}/${row.total}</td>
+      <td>${row.percent}%</td>
+      <td>${row.updated_at ? new Date(row.updated_at).toLocaleString("he-IL") : ""}</td>
+    </tr>
+  `).join("");
+
   mainArea.innerHTML = `
     <h2>ברוך הבא</h2>
-    <p>בחר שיעור מהרשימה בצד ימין.</p>
+
+    <p>שיעורים שהושלמו: <strong>${completed}</strong> מתוך <strong>${LESSONS.length}</strong></p>
+    <p>ממוצע ציונים: <strong>${average}%</strong></p>
+
+    <h3>ציונים אחרונים</h3>
+    ${
+      completed
+        ? `<table>
+            <thead>
+              <tr>
+                <th>שיעור</th>
+                <th>ציון</th>
+                <th>אחוז</th>
+                <th>תאריך</th>
+              </tr>
+            </thead>
+            <tbody>${recent}</tbody>
+          </table>`
+        : `<p>בחר שיעור מהרשימה בצד ימין.</p>`
+    }
   `;
 }
 
 function renderLesson(lesson) {
   let html = `
     <h2>${lesson.title}</h2>
-    <p><strong>${lesson.unit || ""}</strong></p>
+    <p>${lesson.unit || ""}</p>
 
     <h3>אוצר מילים</h3>
     <ul>
@@ -31,7 +105,7 @@ function renderLesson(lesson) {
     </ul>
 
     <h3>טקסט</h3>
-    <div class="reading">${lesson.reading}</div>
+    <div>${lesson.reading}</div>
 
     <h3>שאלות הבנת הנקרא</h3>
   `;
@@ -77,8 +151,10 @@ function renderLesson(lesson) {
     lesson.cloze.forEach((q, i) => {
       html += `
         <div class="question">
-          <p>${i + 1}. ${q[0]}</p>
-          <input id="cloze${i}" type="text">
+          <label>
+            ${i + 1}. ${q[0]}
+            <input id="cloze${i}" type="text">
+          </label>
         </div>
       `;
     });
@@ -92,7 +168,48 @@ function renderLesson(lesson) {
   mainArea.innerHTML = html;
 }
 
-function checkLesson(id) {
+async function saveProgressToSupabase(lesson, score, total, percent) {
+  if (!supabaseClient) {
+    console.error("No Supabase client");
+    return false;
+  }
+
+  const payload = {
+    student_id: STUDENT_ID,
+    lesson_id: lesson.id,
+    lesson_title: lesson.title,
+    score: score,
+    total: total,
+    percent: percent,
+    completed_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  let { error } = await supabaseClient
+    .from(PROGRESS_TABLE)
+    .upsert(payload, { onConflict: "student_id,lesson_id" });
+
+  if (error) {
+    console.warn("Upsert failed, trying insert instead:", error);
+
+    const inserted = await supabaseClient
+      .from(PROGRESS_TABLE)
+      .insert(payload);
+
+    error = inserted.error;
+  }
+
+  if (error) {
+    console.error("Error saving progress:", error);
+    return false;
+  }
+
+  await loadProgress();
+  renderLessonList();
+  return true;
+}
+
+async function checkLesson(id) {
   const lesson = LESSONS.find(l => l.id === id);
   let score = 0;
   let total = 0;
@@ -123,10 +240,24 @@ function checkLesson(id) {
 
   document.getElementById("resultBox").innerHTML = `
     <h3>ציון: ${score}/${total} — ${percent}%</h3>
+    <p id="saveStatus">שומר ל-Supabase...</p>
   `;
+
+  const saved = await saveProgressToSupabase(lesson, score, total, percent);
+
+  document.getElementById("saveStatus").textContent = saved
+    ? "נשמר ב-Supabase."
+    : "השמירה ל-Supabase נכשלה. בדוק שהטבלה progress קיימת ושההרשאות פתוחות.";
 }
 
-document.getElementById("homeBtn").onclick = renderHome;
+async function startApp() {
+  initSupabase();
+  await loadProgress();
 
-renderLessonList();
-renderHome();
+  document.getElementById("homeBtn").onclick = renderHome;
+
+  renderLessonList();
+  renderHome();
+}
+
+startApp();
