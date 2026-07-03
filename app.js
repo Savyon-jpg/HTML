@@ -12,9 +12,8 @@ let progressCache = [];
 function initSupabase() {
   if (window.supabase && typeof window.supabase.createClient === "function") {
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    console.log("Supabase connected");
   } else {
-    console.error("Supabase library not loaded. Check index.html");
+    console.error("Supabase library not loaded.");
   }
 }
 
@@ -71,7 +70,6 @@ function renderHome() {
 
   mainArea.innerHTML = `
     <h2>ברוך הבא</h2>
-
     <p>שיעורים שהושלמו: <strong>${completed}</strong> מתוך <strong>${LESSONS.length}</strong></p>
     <p>ממוצע ציונים: <strong>${average}%</strong></p>
 
@@ -153,7 +151,7 @@ function renderLesson(lesson) {
         <div class="question">
           <label>
             ${i + 1}. ${q[0]}
-            <input id="cloze${i}" type="text">
+            <input id="cloze${i}" type="text" autocomplete="off">
           </label>
         </div>
       `;
@@ -191,11 +189,7 @@ async function saveProgressToSupabase(lesson, score, total, percent) {
 
   if (error) {
     console.warn("Upsert failed, trying insert instead:", error);
-
-    const inserted = await supabaseClient
-      .from(PROGRESS_TABLE)
-      .insert(payload);
-
+    const inserted = await supabaseClient.from(PROGRESS_TABLE).insert(payload);
     error = inserted.error;
   }
 
@@ -231,7 +225,8 @@ async function checkLesson(id) {
   if (lesson.cloze) {
     lesson.cloze.forEach((q, i) => {
       total++;
-      const answer = document.getElementById(`cloze${i}`).value.trim();
+      const input = document.getElementById(`cloze${i}`);
+      const answer = input ? input.value.trim() : "";
       if (answer === q[1]) score++;
     });
   }
