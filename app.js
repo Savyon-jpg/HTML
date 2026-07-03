@@ -40,6 +40,23 @@ function getLessonProgress(lessonId) {
   return progressCache.find(row => row.lesson_id === lessonId);
 }
 
+function escapeHtml(text) {
+  return String(text ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function normalizeAnswer(text) {
+  return String(text || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[.?!,;:'"״׳]/g, "")
+    .toLowerCase();
+}
+
 function renderLessonList() {
   lessonList.innerHTML = "";
   LESSONS.forEach((lesson, index) => {
@@ -62,9 +79,9 @@ function renderHome() {
 
   const recent = progressCache.slice(0, 5).map(row => `
     <tr>
-      <td>${row.lesson_title || row.lesson_id}</td>
-      <td>${row.score}/${row.total}</td>
-      <td>${row.percent}%</td>
+      <td>${escapeHtml(row.lesson_title || row.lesson_id)}</td>
+      <td>${escapeHtml(row.score)}/${escapeHtml(row.total)}</td>
+      <td>${escapeHtml(row.percent)}%</td>
       <td>${row.updated_at ? new Date(row.updated_at).toLocaleString("he-IL") : ""}</td>
     </tr>
   `).join("");
@@ -95,12 +112,12 @@ function renderHome() {
 
 function renderLesson(lesson) {
   let html = `
-    <h2>${lesson.title}</h2>
-    <p>${lesson.unit || ""}</p>
+    <h2>${escapeHtml(lesson.title)}</h2>
+    <p>${escapeHtml(lesson.unit || "")}</p>
 
     <h3>אוצר מילים</h3>
     <ul>
-      ${lesson.vocabulary.map(v => `<li><strong>${v[0]}</strong> — ${v[1]}</li>`).join("")}
+      ${lesson.vocabulary.map(v => `<li><strong>${escapeHtml(v[0])}</strong> — ${escapeHtml(v[1])}</li>`).join("")}
     </ul>
 
     <h3>טקסט</h3>
@@ -112,11 +129,11 @@ function renderLesson(lesson) {
   lesson.comprehension.forEach((q, i) => {
     html += `
       <div class="question">
-        <p><strong>${i + 1}. ${q[0]}</strong></p>
+        <p><strong>${i + 1}. ${escapeHtml(q[0])}</strong></p>
         ${q[1].map((ans, j) => `
           <label>
             <input type="radio" name="q${i}" value="${j}">
-            ${ans}
+            ${escapeHtml(ans)}
           </label><br>
         `).join("")}
       </div>
@@ -129,11 +146,11 @@ function renderLesson(lesson) {
     lesson.grammar.forEach((q, i) => {
       html += `
         <div class="question">
-          <p><strong>${i + 1}. ${q[0]}</strong></p>
+          <p><strong>${i + 1}. ${escapeHtml(q[0])}</strong></p>
           ${q[1].map((ans, j) => `
             <label>
               <input type="radio" name="g${i}" value="${j}">
-              ${ans}
+              ${escapeHtml(ans)}
             </label><br>
           `).join("")}
         </div>
@@ -144,14 +161,14 @@ function renderLesson(lesson) {
   if (lesson.cloze && lesson.cloze.length) {
     html += `
       <h3>השלמת מילים</h3>
-      <p><strong>בנק מילים:</strong> ${lesson.clozeBank.join(" | ")}</p>
+      <p><strong>בנק מילים:</strong> ${escapeHtml(lesson.clozeBank.join(" | "))}</p>
     `;
 
     lesson.cloze.forEach((q, i) => {
       html += `
         <div class="question">
           <label>
-            ${i + 1}. ${q[0]}
+            ${i + 1}. ${escapeHtml(q[0])}
             <input id="cloze${i}" type="text" autocomplete="off">
           </label>
         </div>
@@ -160,18 +177,11 @@ function renderLesson(lesson) {
   }
 
   html += `
-    <button class="main-btn safe" onclick="checkLesson('${lesson.id}')">בדוק שיעור</button>
+    <button class="main-btn safe" onclick="checkLesson('${escapeHtml(lesson.id)}')">בדוק שיעור</button>
     <div id="resultBox"></div>
   `;
 
   mainArea.innerHTML = html;
-}
-
-function normalizeAnswer(text) {
-  return String(text || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[.?!,;:'"״׳]/g, "");
 }
 
 async function saveProgressToSupabase(lesson, score, total, percent) {
@@ -205,22 +215,51 @@ async function saveProgressToSupabase(lesson, score, total, percent) {
   return true;
 }
 
+function answerLetter(index) {
+  return ["א", "ב", "ג", "ד"][index] || "";
+}
+
 async function checkLesson(id) {
   const lesson = LESSONS.find(l => l.id === id);
   let score = 0;
   let total = 0;
+  const mistakes = [];
 
   lesson.comprehension.forEach((q, i) => {
     total++;
     const checked = document.querySelector(`input[name="q${i}"]:checked`);
-    if (checked && Number(checked.value) === Number(q[2])) score++;
+    const given = checked ? Number(checked.value) : null;
+    const correct = Number(q[2]);
+
+    if (given === correct) {
+      score++;
+    } else {
+      mistakes.push({
+        title: `הבנת הנקרא ${i + 1}`,
+        question: q[0],
+        given: given === null ? "לא נבחרה תשובה" : `${answerLetter(given)} — ${q[1][given]}`,
+        correct: `${answerLetter(correct)} — ${q[1][correct]}`
+      });
+    }
   });
 
   if (lesson.grammar) {
     lesson.grammar.forEach((q, i) => {
       total++;
       const checked = document.querySelector(`input[name="g${i}"]:checked`);
-      if (checked && Number(checked.value) === Number(q[2])) score++;
+      const given = checked ? Number(checked.value) : null;
+      const correct = Number(q[2]);
+
+      if (given === correct) {
+        score++;
+      } else {
+        mistakes.push({
+          title: `דקדוק ${i + 1}`,
+          question: q[0],
+          given: given === null ? "לא נבחרה תשובה" : `${answerLetter(given)} — ${q[1][given]}`,
+          correct: `${answerLetter(correct)} — ${q[1][correct]}`
+        });
+      }
     });
   }
 
@@ -228,25 +267,49 @@ async function checkLesson(id) {
     lesson.cloze.forEach((q, i) => {
       total++;
       const input = document.getElementById(`cloze${i}`);
-      const answer = input ? normalizeAnswer(input.value) : "";
-      const correct = normalizeAnswer(q[1]);
-      if (answer === correct) score++;
+      const given = input ? input.value.trim() : "";
+      const correct = q[1];
+
+      if (normalizeAnswer(given) === normalizeAnswer(correct)) {
+        score++;
+      } else {
+        mistakes.push({
+          title: `השלמת מילים ${i + 1}`,
+          question: q[0],
+          given: given || "לא נכתבה תשובה",
+          correct
+        });
+      }
     });
   }
 
   const percent = total ? Math.round((score / total) * 100) : 0;
 
+  const mistakesHtml = mistakes.length
+    ? `<h3>טעויות</h3>
+       <div class="mistakes">
+        ${mistakes.map(m => `
+          <div class="question">
+            <p><strong>❌ ${escapeHtml(m.title)}</strong></p>
+            <p>${escapeHtml(m.question)}</p>
+            <p>התשובה שלך: <strong>${escapeHtml(m.given)}</strong></p>
+            <p>התשובה הנכונה: <strong>${escapeHtml(m.correct)}</strong></p>
+          </div>
+        `).join("")}
+       </div>`
+    : `<p><strong>כל הכבוד — אין טעויות.</strong></p>`;
+
   document.getElementById("resultBox").innerHTML = `
     <h3>ציון: ${score}/${total} — ${percent}%</h3>
+    ${mistakesHtml}
     <p id="saveStatus">שומר ל-Supabase...</p>
   `;
 
   const saved = await saveProgressToSupabase(lesson, score, total, percent);
 
-  const status = document.getElementById("saveStatus");
-  status.textContent = saved
+  document.getElementById("saveStatus").textContent = saved
     ? "נשמר ב-Supabase."
-    : "השמירה ל-Supabase נכשלה. פתח Console כדי לראות את השגיאה.";
+    : "השמירה ל-Supabase נכשלה. בדוק Console.";
 }
 
 async function startApp() {
