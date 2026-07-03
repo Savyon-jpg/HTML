@@ -12,8 +12,9 @@ let progressCache = [];
 function initSupabase() {
   if (window.supabase && typeof window.supabase.createClient === "function") {
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    console.log("Supabase connected");
   } else {
-    console.error("Supabase library not loaded.");
+    console.error("Supabase library not loaded. Check index.html");
   }
 }
 
@@ -166,6 +167,13 @@ function renderLesson(lesson) {
   mainArea.innerHTML = html;
 }
 
+function normalizeAnswer(text) {
+  return String(text || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[.?!,;:'"״׳]/g, "");
+}
+
 async function saveProgressToSupabase(lesson, score, total, percent) {
   if (!supabaseClient) {
     console.error("No Supabase client");
@@ -176,22 +184,16 @@ async function saveProgressToSupabase(lesson, score, total, percent) {
     student_id: STUDENT_ID,
     lesson_id: lesson.id,
     lesson_title: lesson.title,
-    score: score,
-    total: total,
-    percent: percent,
+    score,
+    total,
+    percent,
     completed_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };
 
-  let { error } = await supabaseClient
+  const { error } = await supabaseClient
     .from(PROGRESS_TABLE)
     .upsert(payload, { onConflict: "student_id,lesson_id" });
-
-  if (error) {
-    console.warn("Upsert failed, trying insert instead:", error);
-    const inserted = await supabaseClient.from(PROGRESS_TABLE).insert(payload);
-    error = inserted.error;
-  }
 
   if (error) {
     console.error("Error saving progress:", error);
@@ -211,14 +213,14 @@ async function checkLesson(id) {
   lesson.comprehension.forEach((q, i) => {
     total++;
     const checked = document.querySelector(`input[name="q${i}"]:checked`);
-    if (checked && Number(checked.value) === q[2]) score++;
+    if (checked && Number(checked.value) === Number(q[2])) score++;
   });
 
   if (lesson.grammar) {
     lesson.grammar.forEach((q, i) => {
       total++;
       const checked = document.querySelector(`input[name="g${i}"]:checked`);
-      if (checked && Number(checked.value) === q[2]) score++;
+      if (checked && Number(checked.value) === Number(q[2])) score++;
     });
   }
 
@@ -226,12 +228,13 @@ async function checkLesson(id) {
     lesson.cloze.forEach((q, i) => {
       total++;
       const input = document.getElementById(`cloze${i}`);
-      const answer = input ? input.value.trim() : "";
-      if (answer === q[1]) score++;
+      const answer = input ? normalizeAnswer(input.value) : "";
+      const correct = normalizeAnswer(q[1]);
+      if (answer === correct) score++;
     });
   }
 
-  const percent = Math.round((score / total) * 100);
+  const percent = total ? Math.round((score / total) * 100) : 0;
 
   document.getElementById("resultBox").innerHTML = `
     <h3>ציון: ${score}/${total} — ${percent}%</h3>
@@ -240,9 +243,10 @@ async function checkLesson(id) {
 
   const saved = await saveProgressToSupabase(lesson, score, total, percent);
 
-  document.getElementById("saveStatus").textContent = saved
+  const status = document.getElementById("saveStatus");
+  status.textContent = saved
     ? "נשמר ב-Supabase."
-    : "השמירה ל-Supabase נכשלה. בדוק שהטבלה progress קיימת ושההרשאות פתוחות.";
+    : "השמירה ל-Supabase נכשלה. פתח Console כדי לראות את השגיאה.";
 }
 
 async function startApp() {
