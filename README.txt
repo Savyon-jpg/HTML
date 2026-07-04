@@ -1,8 +1,27 @@
-התקנה:
-1. העלה ל-GitHub והחלף: index.html, style.css, lessons.js, app.js
-2. ב-Supabase SQL Editor הרץ את supabase_progress_table.sql
-3. פתח את האתר ונסה שיעור.
+Savyon Hebrew Lessons v1
 
-כולל:
-5 שיעורים, הצגת טעויות, חזרה על מילים שגויות, שמירה ל-Supabase, איפוס התקדמות.
-בשאלות הבנת הנקרא בכל שיעור התשובות הנכונות מפוזרות א/ב/ג/ד.
+Installation:
+1. Replace the files in the GitHub repository with:
+   index.html
+   style.css
+   lessons.js
+   app.js
+
+2. In Supabase, open SQL Editor and run:
+   supabase_progress_table.sql
+
+3. Open:
+   https://savyon-jpg.github.io/HTML/?v=1
+
+Included:
+- One student only: savyon
+- 5 Hebrew lessons
+- Reading, vocabulary, comprehension, grammar, cloze
+- Shows mistakes after checking
+- Shows correct answers
+- Saves score to Supabase
+- Saves mistakes and wrong words
+- Review wrong words
+- Review wrong questions
+- Reset progress
+- Balanced answer distribution in comprehension questions: A/B/C/D

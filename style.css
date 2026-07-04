@@ -1,1 +1,161 @@
-body{margin:0;font-family:Arial,sans-serif;background:#f5f7fb;color:#222}.topbar{background:#23395d;color:white;padding:20px;text-align:center}.layout{display:flex;min-height:calc(100vh - 110px)}.sidebar{width:280px;background:white;padding:16px;border-left:1px solid #ddd;box-sizing:border-box}.content{flex:1;padding:24px;max-width:950px}.main-btn,.lesson-btn{display:block;width:100%;margin:8px 0;padding:12px;border:0;border-radius:10px;cursor:pointer;font-size:16px;text-align:right}.main-btn{background:#e8eefc}.lesson-btn{background:#f0f0f0}.danger{background:#ffe1e1}.card,.question{background:white;border-radius:12px;padding:16px;margin:14px 0;box-shadow:0 1px 5px rgba(0,0,0,.08)}.reading-text{background:white;padding:18px;border-radius:12px;line-height:1.8;font-size:18px}input[type=text]{padding:8px;border:1px solid #aaa;border-radius:8px;font-size:16px;margin-right:8px}table{width:100%;border-collapse:collapse;background:white}th,td{border:1px solid #ddd;padding:10px}.correct{color:#116b2f;font-weight:bold}.wrong{color:#a00000;font-weight:bold}.small{color:#666;font-size:14px}
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, "Noto Sans Hebrew", sans-serif;
+  background: #f5f7fb;
+  color: #222;
+}
+
+.topbar {
+  background: #23395d;
+  color: white;
+  padding: 20px;
+  text-align: center;
+}
+
+.topbar h1 {
+  margin: 0 0 8px 0;
+}
+
+.topbar p {
+  margin: 0;
+}
+
+.layout {
+  display: flex;
+  min-height: calc(100vh - 108px);
+}
+
+.sidebar {
+  width: 290px;
+  background: #fff;
+  padding: 16px;
+  border-left: 1px solid #ddd;
+}
+
+.content {
+  flex: 1;
+  padding: 24px;
+  max-width: 980px;
+}
+
+.main-btn,
+.lesson-btn {
+  display: block;
+  width: 100%;
+  margin: 8px 0;
+  padding: 12px;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 16px;
+  text-align: right;
+}
+
+.main-btn {
+  background: #e8eefc;
+}
+
+.lesson-btn {
+  background: #f0f0f0;
+}
+
+.main-btn:hover,
+.lesson-btn:hover {
+  filter: brightness(0.96);
+}
+
+.danger {
+  background: #ffe1e1;
+}
+
+.card,
+.question {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 14px 0;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.08);
+}
+
+.reading-text {
+  background: white;
+  padding: 18px;
+  border-radius: 12px;
+  line-height: 1.9;
+  font-size: 18px;
+  white-space: pre-line;
+}
+
+input[type="text"] {
+  padding: 8px;
+  border: 1px solid #aaa;
+  border-radius: 8px;
+  font-size: 16px;
+  margin: 8px;
+  min-width: 180px;
+}
+
+label {
+  line-height: 1.9;
+  cursor: pointer;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  margin-top: 10px;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 10px;
+}
+
+.correct {
+  color: #116b2f;
+  font-weight: bold;
+}
+
+.wrong {
+  color: #a00000;
+  font-weight: bold;
+}
+
+.small {
+  color: #666;
+  font-size: 14px;
+}
+
+.progress-bar {
+  height: 18px;
+  background: #e4e4e4;
+  border-radius: 20px;
+  overflow: hidden;
+  margin: 10px 0;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #6078b8;
+}
+
+@media (max-width: 800px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    border-left: 0;
+    border-bottom: 1px solid #ddd;
+  }
+
+  .content {
+    padding: 14px;
+  }
+}
